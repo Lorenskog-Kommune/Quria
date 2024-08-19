@@ -8,7 +8,7 @@ let
 //Her definerer du hvilken mappe som er kilde til CSV-filene du skal bruke. I mappen kan du f.eks. legge en samling med CSV-filer. 
 //Vi har lastet ned elevrapporter for hver enkelt skole, navngitt disse og lagt de samlet i en mappe for året - og definert hvilke trinn vi skal importere i et senere steg.
 
-    Kilde = Folder.Files("C:\Users\roblau\Desktop\Rotemappe\Vigilo\QuriaEksport\2024"),
+    Kilde = Folder.Files("C:\Users\BRUKERNAVN\MAPPE\2024"),
     #"Filtrerte skjulte filer1" = Table.SelectRows(Kilde, each [Attributes]?[Hidden]? <> true),
     #"Aktiver egendefinert funksjon1" = Table.AddColumn(#"Filtrerte skjulte filer1", "Transformer fil", each #"Transformer fil"([Content])),
     #"Kolonner med nye navn1" = Table.RenameColumns(#"Aktiver egendefinert funksjon1", {"Name", "Source.Name"}),
