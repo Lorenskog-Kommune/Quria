@@ -1,0 +1,65 @@
+//Skriptet er utviklet av Robin Laumb, Lørenskog Kommune (Oppvekst og Utdanning) og er ment for å transformere data slik de kommer fra Vigilo (elevrapport) og til et format som er vennlig for import til Quria via Axiell sin SFTP-server.
+//Skriptet er produsert høsten 2024 og kan fritt brukes av de som har behov. Videreutvikling er velkomment.
+
+//For å bruke dette Power Query skripet kan du bruke Excel sin avanserte funksjon for å importere CSV-filer.
+//Filen du lagrer må være i UTF-8 format for at Quria skal klare å kverne den.
+
+let
+//Her definerer du hvilken mappe som er kilde til CSV-filene du skal bruke. I mappen kan du f.eks. legge en samling med CSV-filer. 
+//Vi har lastet ned elevrapporter for hver enkelt skole, navngitt disse og lagt de samlet i en mappe for året - og definert hvilke trinn vi skal importere i et senere steg.
+
+    Kilde = Folder.Files("C:\Users\roblau\Desktop\Rotemappe\Vigilo\QuriaEksport\2024"),
+    #"Filtrerte skjulte filer1" = Table.SelectRows(Kilde, each [Attributes]?[Hidden]? <> true),
+    #"Aktiver egendefinert funksjon1" = Table.AddColumn(#"Filtrerte skjulte filer1", "Transformer fil", each #"Transformer fil"([Content])),
+    #"Kolonner med nye navn1" = Table.RenameColumns(#"Aktiver egendefinert funksjon1", {"Name", "Source.Name"}),
+    #"Andre kolonner fjernet1" = Table.SelectColumns(#"Kolonner med nye navn1", {"Source.Name", "Transformer fil"}),
+    #"Utvidet tabellkolonne1" = Table.ExpandTableColumn(#"Andre kolonner fjernet1", "Transformer fil", Table.ColumnNames(#"Transformer fil"(Eksempelfil))),
+    #"Endret type" = Table.TransformColumnTypes(#"Utvidet tabellkolonne1",{{"Source.Name", type text}, {"Skole", type text}, {"Skoleår", type text}, {"Trinn", Int64.Type}, {"Gruppenavn", type text}, {"Gruppetype", type text}, {"Fornavn", type text}, {"Etternavn", type text}, {"Alias", type any}, {"Kjønn", type text}, {"Fødselsnummer", Int64.Type}, {"Fødselsdato", type date}, {"Morsmål", type text}, {"Målform", type text}, {"Statsborgerskap", type text}, {"Adresse", type text}, {"Postnummer", Int64.Type}, {"Poststed", type text}, {"Landskode", type text}}),
+    #"Fjernet Filnavn" = Table.RemoveColumns(#"Endret type",{"Source.Name"}),
+
+//Her har vi i eksempelet filtrert på 1. trinn for å ta en ren oppdatering på skolestartere (du må lage en ansatterapport om du skal importere ansatte).
+    #"Filter på klassetrinn her" = Table.SelectRows(#"Fjernet Filnavn", each ([Trinn] = 1)),
+    #"Fjernede unødvendige kolonner" = Table.RemoveColumns(#"Filter på klassetrinn her",{"Trinn", "Gruppetype", "Alias", "Kjønn", "Morsmål", "Målform", "Statsborgerskap", "Adresse", "Postnummer", "Poststed", "Landskode", "Skoleår"}),
+    #"Indeksert lagt til1" = Table.AddIndexColumn(#"Fjernede unødvendige kolonner", "Indeks.1", 1, 1, Int64.Type),
+    #"Endret navn på gamle kolonner" = Table.RenameColumns(#"Indeksert lagt til1",{{"Skole", "Branch"}, {"Gruppenavn", "Class"}, {"Fornavn", "FirstName"}, {"Etternavn", "LastName"}, {"Fødselsnummer", "PatronNationalID"}, {"Fødselsdato", "BirthDate"}, {"Indeks.1", "Indeks"}}),
+    #"Kolonne Operation Lagt til" = Table.AddColumn(#"Endret navn på gamle kolonner", "Operation", each "SAVE"),
+
+//Du kan selv velge hva slags brukernavn du vil bruke. I dette eksempelet får alle elevene et brukernavn som starter på B og har et løpenummer fra 0001 og opp. Det bør være mulig å f.eks. lage en forutsetning om hva som er i Branch-kolonnen om man ønsker unike IDer for hver skole. I eksempelet har alle et universalt brukernavn for bruk i hele kommunen.
+    #"Kolonne UserName Lagt til" = Table.AddColumn(#"Kolonne Operation Lagt til", "UserName", each "B" & Text.PadStart(Text.From([Indeks]), 4, "0")),
+    
+//PIN-kode for elevene (til bruk i WeLib) settes her. I eksempelet er PIN-koden 1234.
+    #"Kolonne Password Lagt til" = Table.AddColumn(#"Kolonne UserName Lagt til", "Password", each "1234"),
+    #"Kolonne Email Lagt til" = Table.AddColumn(#"Kolonne Password Lagt til", "Email", each ""),
+    #"Kolonne Phone Lagt til" = Table.AddColumn(#"Kolonne Email Lagt til", "Phone", each ""),
+    #"Kolonne Role Lagt til" = Table.AddColumn(#"Kolonne Phone Lagt til", "Role", each "STUDENT"),
+    #"Kolonne CO Lagt til" = Table.AddColumn(#"Kolonne Role Lagt til", "CO", each ""),
+    #"Kolonne StreetAdress1 Lagt til" = Table.AddColumn(#"Kolonne CO Lagt til", "StreetAdress1", each [Branch]),
+    #"Kolonne StreetAdress2 Lagt til" = Table.AddColumn(#"Kolonne StreetAdress1 Lagt til", "StreetAdress2", each ""),
+    #"Kolonne ZipCode Lagt til" = Table.AddColumn(#"Kolonne StreetAdress2 Lagt til", "ZipCode", each ""),
+    #"Kolonne City Lagt til" = Table.AddColumn(#"Kolonne ZipCode Lagt til", "City", each ""),
+    #"Kolonne State Lagt til" = Table.AddColumn(#"Kolonne City Lagt til", "State", each ""),
+    #"Kolonne ExtPatronId Lagt til" = Table.AddColumn(#"Kolonne State Lagt til", "ExtPatronId", each ""),
+    #"Kolonne ExtPatronName Lagt til" = Table.AddColumn(#"Kolonne ExtPatronId Lagt til", "ExtPatronName", each ""),
+    #"Kolonne ExtBorrowCard Lagt til" = Table.AddColumn(#"Kolonne ExtPatronName Lagt til", "ExtBorrowCard", each ""),
+    #"Omorganiserte kolonner" = Table.ReorderColumns(#"Kolonne ExtBorrowCard Lagt til",{"Operation", "PatronNationalID", "Branch", "Class", "UserName", "Password", "FirstName", "LastName", "BirthDate", "Indeks", "Email", "Phone", "Role", "CO", "StreetAdress1", "StreetAdress2", "ZipCode", "City", "State", "ExtPatronId", "ExtPatronName", "ExtBorrowCard"}),
+    #"Kolonne Indeks Fjernet" = Table.RemoveColumns(#"Omorganiserte kolonner",{"Indeks"}),
+
+//Normalt kommer fødselsnummer fra Vigilo som starter på 0 inn i rapporten med kun 10 siffer. Denne funksjonen retter opp dette ved å legge til en foranliggende 0 for alle fødselsnummer som ikke er 11 siffer langt.
+    #"Kolonne for fødselsnummer riktig format" = Table.AddColumn(#"Kolonne Indeks Fjernet", "PatronNationalID.New", each Text.PadStart(Text.From([PatronNationalID]), 11, "0")),
+    #"Omorganiserte kolonnen" = Table.ReorderColumns(#"Kolonne for fødselsnummer riktig format",{"Operation", "PatronNationalID", "PatronNationalID.New", "Branch", "Class", "UserName", "Password", "FirstName", "LastName", "BirthDate", "Email", "Phone", "Role", "CO", "StreetAdress1", "StreetAdress2", "ZipCode", "City", "State", "ExtPatronId", "ExtPatronName", "ExtBorrowCard"}),
+    #"Fjernet PatronNationalID" = Table.RemoveColumns(#"Omorganiserte kolonnen",{"PatronNationalID"}),
+    #"Byttet navn på den andre kolonnen" = Table.RenameColumns(#"Fjernet PatronNationalID",{{"PatronNationalID.New", "PatronNationalID"}}),
+    #"Fjernet gammel BirthDate" = Table.RemoveColumns(#"Byttet navn på den andre kolonnen",{"BirthDate"}),
+
+//Her konverteres de første 6 sifrene i fødselsnummeret til en fødselsdato som Quria finner spiselig (Fra ddmmyy til yyyymmdd)
+    #"Kolonne BirthDate Lagt til" = Table.AddColumn(#"Fjernet gammel BirthDate", "BirthDate", each let
+    PatronNationalID = Text.Start([PatronNationalID], 6),
+    Dag = Text.Middle(PatronNationalID, 0, 2),
+    Måned = Text.Middle(PatronNationalID, 2, 2),
+    År = Text.Middle(PatronNationalID, 4, 2),
+    FulltÅr = if Number.FromText(År) > 23 then "19" & År else "20" & År
+in
+    FulltÅr & Måned & Dag),
+    #"Flyttet BirthDate" = Table.ReorderColumns(#"Kolonne BirthDate Lagt til",{"Operation", "PatronNationalID", "Branch", "Class", "UserName", "Password", "FirstName", "LastName", "BirthDate", "Email", "Phone", "Role", "CO", "StreetAdress1", "StreetAdress2", "ZipCode", "City", "State", "ExtPatronId", "ExtPatronName", "ExtBorrowCard"})
+in
+    #"Flyttet BirthDate"
