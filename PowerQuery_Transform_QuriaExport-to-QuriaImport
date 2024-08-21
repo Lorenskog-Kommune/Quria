@@ -1,0 +1,70 @@
+//Skriptet er utviklet av Robin Laumb, Lørenskog Kommune (Oppvekst og Utdanning) og er ment for å transformere data slik de kommer fra Quria (alle lånere CSV) og til et format som er vennlig for import til Quria via Axiell sin SFTP-server.
+//Skriptet er produsert høsten 2024 og kan fritt brukes av de som har behov. Videreutvikling er velkomment.
+
+//Kommersiell bruk av skriptet er ikke OK, ref. lisenstypen.
+
+//For å bruke dette Power Query skripet kan du bruke Excel sin avanserte funksjon for å importere CSV-filer.
+//Filen du lagrer må være i UTF-8 format for at Quria skal klare å kverne den.
+
+//Lite visste jeg at Quria ikke spiser samme filformat som det leverer ut i andre enden. Dette skriptet fikser dette ved å ta eksport-formatet og konvertere det til import-format. Typisk at man må igjennom det også.
+
+let
+
+//Her definerer du hvilken fil som er kilde til CSV-filene du skal bruke. I mappen kan du f.eks. legge en samling med CSV-filer. 
+//Det er her brukt enkelt-fil og ikke mappe slik som i det andre skriptet (transformasjon av Vigilo-data).
+
+    Kilde = Csv.Document(File.Contents("C:\Users\roblau\Desktop\Rotemappe\Vigilo\QuriaEksport\2024\Eksport FRA Quria 20240820.csv"),[Delimiter=";", Columns=36, Encoding=65001, QuoteStyle=QuoteStyle.None]),
+    #"Forfremmede overskrifter" = Table.PromoteHeaders(Kilde, [PromoteAllScalars=true]),
+    #"Endret type" = Table.TransformColumnTypes(#"Forfremmede overskrifter",{{"Fornavn", type text}, {"Etternavn", type text}, {"Fødselsdato", type date}, {"Kjønn", type text}, {"Adresselinje 1", type text}, {"Adresselinje 2", type text}, {"c/o", type text}, {"Postkode", type text}, {"By", type text}, {"Land", type text}, {"Kategori", type text}, {"E-post", type text}, {"Telefonnummer", Int64.Type}, {"SMS", type logical}, {"Fødselsnummer", Int64.Type}, {"Kort", type text}, {"Låner-ID", type text}, {"Hentested", type text}, {"Aldersgruppe", type text}, {"Får bruke meråpent bibliotek", type text}, {"Medlemskapstype", type text}, {"Forfallsdato", type text}, {"Låner har godtatt å motta markedsføringsmateriale", type text}, {"Registrert ved biblioteket", type date}, {"Dato for siste aktivitet", type date}, {"Antall utlån i år", Int64.Type}, {"Totalt antall utlån", Int64.Type}, {"Gjeldsbeløp", Int64.Type}, {"Regningsbeløp", Int64.Type}, {"Totalt beløp", Int64.Type}, {"Lånerkontoen er sperret", type text}, {"Skole", type text}, {"Klasse", type text}, {"Endringskode", type text}, {"Personvernmerke", type text}, {"Beskyttet identitet", type text}}),
+    #"Fjernet undøvendige kolonner" = Table.RemoveColumns(#"Endret type",{"Fødselsdato", "Kjønn", "Land", "SMS", "Låner-ID", "Hentested", "Aldersgruppe", "Får bruke meråpent bibliotek", "Medlemskapstype", "Forfallsdato", "Låner har godtatt å motta markedsføringsmateriale", "Registrert ved biblioteket", "Dato for siste aktivitet", "Antall utlån i år", "Totalt antall utlån", "Gjeldsbeløp", "Regningsbeløp", "Totalt beløp", "Lånerkontoen er sperret", "Endringskode", "Personvernmerke", "Beskyttet identitet", "Adresselinje 1"}),
+    #"Steg 1 bytte navn på kolonner" = Table.RenameColumns(#"Fjernet undøvendige kolonner",{{"Fornavn", "FirstName"}, {"Etternavn", "LastName"}, {"Adresselinje 2", "StreetAdress2"}, {"c/o", "CO"}, {"Postkode", "ZipCode"}, {"By", "City"}, {"Kategori", "Role_old"}, {"E-post", "Email"}, {"Telefonnummer", "Phone"}, {"Fødselsnummer", "PatronNationalIDOld"}, {"Kort", "UserName"}, {"Klasse", "Class"}}),
+    #"Fjerne Fødselsnummer uten verdi" = Table.SelectRows(#"Steg 1 bytte navn på kolonner", each ([PatronNationalIDOld] <> null)),
+    
+	//Fødselsnummeret hentes fra gammel kolonne og lagres i ny (fjernes senere) med riktig format (11 siffer).
+	
+	#"Konverter fødselsnummer" = Table.AddColumn(#"Fjerne Fødselsnummer uten verdi", "PatronNationalID", each Text.PadStart(Text.From([PatronNationalIDOld]), 11, "0")),
+
+//Transformere Quria-betegnelser til import-vennlige ord. Ikke alle kan bruke "Expired TEACHER/STUDENT og UNKNONW-variantene), men de kan du filtrere vekk før du importerer. Kjekt å vite hvem som var var fra før.
+
+    #"Opprette Role-definisjonene" = Table.AddColumn(#"Konverter fødselsnummer", "Role", each if [Role_old] = "Elevkategori" then "STUDENT" 
+  else if [Role_old] = "Utgått elev" then "Expired STUDENT"
+  else if [Role_old] = "Personale" then "TEACHER"
+  else if [Role_old] = "Utgått personale" then "Expired TEACHER"
+  else if [Role_old] = "Voksen" then "UNKNOWN ADULT"
+  else if [Role_old] = "ukjent" then "UNKNOWN"
+  else "UNKNOWN"),
+  
+  //Også her må fødselsnummer konverteres til en yyyymmdd format for BirthDate-kolonnen.
+  
+    #"Konvertere fnr til BirthDate" = Table.AddColumn(#"Opprette Role-definisjonene", "BirthDate", each let
+    PatronNationalID = Text.Start([PatronNationalID], 6),
+    Dag = Text.Middle(PatronNationalID, 0, 2),
+    Måned = Text.Middle(PatronNationalID, 2, 2),
+    År = Text.Middle(PatronNationalID, 4, 2),
+    FulltÅr = if Number.FromText(År) > 23 then "19" & År else "20" & År
+in
+    FulltÅr & Måned & Dag),
+	
+	//Legge til manglende kolonner + formatere data som hentes fra andre riktig.
+	
+    #"Legg til Branch" = Table.AddColumn(#"Konvertere fnr til BirthDate", "Branch", each Text.Combine({Text.Remove(Text.Replace([Skole], "skolebibliotek", ""), " "), "skole"}, " ")),
+    #"Legg til StreetAdress1" = Table.AddColumn(#"Legg til Branch", "StreetAdress1", each Text.Combine({Text.Remove(Text.Replace([Skole], "skolebibliotek", ""), " "), "skole"}, " ")),
+    #"Legg til Password" = Table.AddColumn(#"Legg til StreetAdress1", "Password", each ""),
+    #"Legg til State" = Table.AddColumn(#"Legg til Password", "State", each ""),
+    #"Legg til ExtPatronID" = Table.AddColumn(#"Legg til State", "ExtPatronID", each ""),
+    #"Legg til ExtPatronName" = Table.AddColumn(#"Legg til ExtPatronID", "ExtPatronName", each ""),
+    #"Legg til ExtBorrowCard" = Table.AddColumn(#"Legg til ExtPatronName", "ExtBorrowCard", each ""),
+
+//slette gamle kolonner som ikke lenger er nødvendige
+
+    #"Slett gamle kolonner" = Table.RemoveColumns(#"Legg til ExtBorrowCard",{"Skole", "PatronNationalIDOld", "Role_old"}),
+
+//Legge til Operation-kolonnen som skal styre om dataene ved import skal lagres/oppdateres (SAVE) eller ikke. Dette setter du manuelt senere eller lager en funksjon her om du vil.
+
+    #"Legg til Operation" = Table.AddColumn(#"Slett gamle kolonner", "Operation", each ""),
+
+//Omorganiserte kolonnene så de er i riktig rekkefølge slik at importen går sømløst. Etter dette kan du importere dataene og manipulere dem slik du ønsker før du eksporterer CSV-en og importerer de.
+
+    #"Omorganiserte kolonner" = Table.ReorderColumns(#"Legg til Operation",{"Operation", "PatronNationalID", "Branch", "Class", "UserName", "Password", "FirstName", "LastName", "BirthDate", "Email", "Phone", "Role", "CO", "StreetAdress1", "StreetAdress2", "ZipCode", "City", "State", "ExtPatronID", "ExtPatronName", "ExtBorrowCard"})
+in
+    #"Omorganiserte kolonner"
