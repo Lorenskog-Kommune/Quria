@@ -1,6 +1,8 @@
 //Skriptet er utviklet av Robin Laumb, Lørenskog Kommune (Oppvekst og Utdanning) og er ment for å transformere data slik de kommer fra Vigilo (elevrapport) og til et format som er vennlig for import til Quria via Axiell sin SFTP-server.
 //Skriptet er produsert høsten 2024 og kan fritt brukes av de som har behov. Videreutvikling er velkomment.
 
+//Kommersiell bruk av skriptet er ikke OK, ref. lisenstypen.
+
 //For å bruke dette Power Query skripet kan du bruke Excel sin avanserte funksjon for å importere CSV-filer.
 //Filen du lagrer må være i UTF-8 format for at Quria skal klare å kverne den.
 
