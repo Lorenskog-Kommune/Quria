@@ -25,6 +25,7 @@ let
 	#"Konverter fødselsnummer" = Table.AddColumn(#"Fjerne Fødselsnummer uten verdi", "PatronNationalID", each Text.PadStart(Text.From([PatronNationalIDOld]), 11, "0")),
 
 //Transformere Quria-betegnelser til import-vennlige ord. Ikke alle kan bruke "Expired TEACHER/STUDENT og UNKNONW-variantene), men de kan du filtrere vekk før du importerer. Kjekt å vite hvem som var var fra før.
+//LIBRARIAN, TEACHER og STUDENT er eneste gyldige verdier for import.
 
     #"Opprette Role-definisjonene" = Table.AddColumn(#"Konverter fødselsnummer", "Role", each if [Role_old] = "Elevkategori" then "STUDENT" 
   else if [Role_old] = "Utgått elev" then "Expired STUDENT"
@@ -59,7 +60,8 @@ in
 
     #"Slett gamle kolonner" = Table.RemoveColumns(#"Legg til ExtBorrowCard",{"Skole", "PatronNationalIDOld", "Role_old"}),
 
-//Legge til Operation-kolonnen som skal styre om dataene ved import skal lagres/oppdateres (SAVE) eller ikke. Dette setter du manuelt senere eller lager en funksjon her om du vil.
+//Legge til Operation-kolonnen som skal styre om dataene ved import skal lagres/oppdateres (SAVE) eller ikke (DELETE). Dette setter du manuelt senere eller lager en funksjon her om du vil.
+//Feltet Operation er alltid påkrevd.
 
     #"Legg til Operation" = Table.AddColumn(#"Slett gamle kolonner", "Operation", each ""),
 
