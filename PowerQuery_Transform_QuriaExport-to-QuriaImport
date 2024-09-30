@@ -42,6 +42,7 @@ let
     Dag = Text.Middle(PatronNationalID, 0, 2),
     Måned = Text.Middle(PatronNationalID, 2, 2),
     År = Text.Middle(PatronNationalID, 4, 2),
+//NB! Her må du endre 23 til det høyeste året du importerer for et gitt år. Så dette bør være 24 eller 25 i år 2025. Dette for å ta med opptil 100 år gamle brukere og gi de riktig fødselsår på 1900-tallet.
     FulltÅr = if Number.FromText(År) > 23 then "19" & År else "20" & År
 in
     FulltÅr & Måned & Dag),
